@@ -20,11 +20,11 @@ import (
 	"net/http"
 
 	"github.com/aliyun-sls/opentelemetry-go-provider-sls/provider"
+	"go.opentelemetry.io/otel/metric/global"
 
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -46,10 +46,10 @@ func main() {
 	defer provider.Shutdown(slsConfig)
 
 	// 注册一个Metric指标（非必要步骤）
-	labels := []label.KeyValue{
-		label.String("label1", "value1"),
+	labels := []attribute.KeyValue{
+		attribute.String("label1", "value1"),
 	}
-	meter := otel.Meter("aliyun.sls")
+	meter := global.Meter("aliyun.sls")
 	callUsersCount := metric.Must(meter).NewInt64Counter("call_users_count")
 
 	r := mux.NewRouter()
@@ -73,9 +73,9 @@ func getUser(ctx context.Context, id string) string {
 	}
 	// 如果需要记录一些事件，可以获取Context中的span并添加Event（非必要步骤）
 	span := trace.SpanFromContext(ctx)
-	span.AddEvent("unknown user id : "+id, trace.WithAttributes(label.KeyValue{
+	span.AddEvent("unknown user id : "+id, trace.WithAttributes(attribute.KeyValue{
 		Key:   "label-key-1",
-		Value: label.StringValue("label-value-1"),
+		Value: attribute.StringValue("label-value-1"),
 	}))
 	return "unknown"
 }
