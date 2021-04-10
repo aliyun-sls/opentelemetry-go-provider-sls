@@ -26,19 +26,19 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/host"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpgrpc"
 	"go.opentelemetry.io/otel/exporters/stdout"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
-	metricexporter "go.opentelemetry.io/otel/sdk/export/metric"
-	traceexporter "go.opentelemetry.io/otel/sdk/export/trace"
+	metricExporter "go.opentelemetry.io/otel/sdk/export/metric"
+	traceExporter "go.opentelemetry.io/otel/sdk/export/trace"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
 	"go.opentelemetry.io/otel/sdk/metric/selector/simple"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/semconv"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/encoding/gzip"
@@ -195,11 +195,11 @@ func mergeResource(c *Config) {
 	detector := resource.FromEnv{}
 	r, _ := detector.Detect(context.Background())
 	c.Resource = resource.Merge(c.Resource, r)
-	var keyValues []label.KeyValue
+	var keyValues []attribute.KeyValue
 	for key, value := range c.resourceAttributes {
-		keyValues = append(keyValues, label.KeyValue{
-			Key:   label.Key(key),
-			Value: label.StringValue(value),
+		keyValues = append(keyValues, attribute.KeyValue{
+			Key:   attribute.Key(key),
+			Value: attribute.StringValue(value),
 		})
 	}
 	newResource := resource.NewWithAttributes(keyValues...)
@@ -207,7 +207,7 @@ func mergeResource(c *Config) {
 }
 
 // 初始化Exporter，如果otlpEndpoint传入的值为 stdout，则默认把信息打印到标准输出用于调试
-func (c *Config) initOtelExporter(otlpEndpoint string, insecure bool) (traceExporter traceexporter.SpanExporter, metricsExporter metricexporter.Exporter, exporterStop func(), initErr error) {
+func (c *Config) initOtelExporter(otlpEndpoint string, insecure bool) (traceExporter traceExporter.SpanExporter, metricsExporter metricExporter.Exporter, exporterStop func(), initErr error) {
 
 	if otlpEndpoint == "stdout" {
 		// 使用Pretty的打印方式
@@ -258,7 +258,7 @@ func (c *Config) initOtelExporter(otlpEndpoint string, insecure bool) (traceExpo
 
 // 初始化Metrics，默认30秒导出一次Metrics
 // 默认该函数导出主机和Golang runtime基础指标
-func (c *Config) initMetric(metricsExporter metricexporter.Exporter, stop func()) error {
+func (c *Config) initMetric(metricsExporter metricExporter.Exporter, stop func()) error {
 	if metricsExporter == nil {
 		return nil
 	}
@@ -271,12 +271,12 @@ func (c *Config) initMetric(metricsExporter metricexporter.Exporter, stop func()
 			simple.NewWithInexpensiveDistribution(),
 			metricsExporter,
 		),
-		controller.WithPusher(metricsExporter),
+		controller.WithExporter(metricsExporter),
 		controller.WithCollectPeriod(period),
 		controller.WithResource(c.Resource),
 	)
 	provider := cont.MeterProvider()
-	otel.SetMeterProvider(provider)
+	global.SetMeterProvider(provider)
 	if err := cont.Start(context.Background()); err != nil {
 		return err
 	}
@@ -297,16 +297,16 @@ func (c *Config) initMetric(metricsExporter metricexporter.Exporter, stop func()
 }
 
 // 初始化Traces，默认全量上传
-func (c *Config) initTracer(traceExporter traceexporter.SpanExporter, stop func()) error {
+func (c *Config) initTracer(traceExporter traceExporter.SpanExporter, stop func()) error {
 	if traceExporter == nil {
 		return nil
 	}
 	// 使用Batch processor批量上传Trace
 	batchProcessor := trace.NewBatchSpanProcessor(traceExporter)
 	// 建议使用AlwaysSample全量上传Trace数据，若您的数据太多，可以使用sdktrace.ProbabilitySampler进行采样上传
-	tp := sdktrace.NewTracerProvider(sdktrace.WithConfig(sdktrace.Config{DefaultSampler: sdktrace.AlwaysSample()}),
+	tp := trace.NewTracerProvider(trace.WithSampler(trace.AlwaysSample()),
 		trace.WithSpanProcessor(batchProcessor),
-		sdktrace.WithResource(c.Resource))
+		trace.WithResource(c.Resource))
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	c.stop = append(c.stop, func() {
