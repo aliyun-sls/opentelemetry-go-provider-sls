@@ -79,6 +79,12 @@ func WithServiceName(name string) Option {
 	}
 }
 
+func WithServiceNamespace(namespace string) Option {
+	return func(c *Config) {
+		c.ServiceNamespace = namespace
+	}
+}
+
 // WithServiceVersion configures a "service.version" resource label
 // 配置版本号
 func WithServiceVersion(version string) Option {
@@ -153,6 +159,7 @@ type Config struct {
 	MetricExporterEndpointInsecure bool   `env:"SLS_OTEL_METRIC_INSECURE,default=false"`
 	MetricReportingPeriod          string `env:"SLS_OTEL_METRIC_EXPORT_PERIOD,default=30s"`
 	ServiceName                    string `env:"SLS_OTEL_SERVICE_NAME"`
+	ServiceNamespace               string `env:"SLS_OTEL_SERVICE_NAMESPACE"`
 	ServiceVersion                 string `env:"SLS_OTEL_SERVICE_VERSION,default=v0.1.0"`
 	Project                        string `env:"SLS_OTEL_PROJECT"`
 	InstanceID                     string `env:"SLS_OTEL_INSTANCE_ID"`
@@ -187,6 +194,7 @@ func getDefaultResource(c *Config) *resource.Resource {
 	return resource.NewWithAttributes(
 		semconv.ServiceNameKey.String(c.ServiceName),
 		semconv.HostNameKey.String(hostname),
+		semconv.ServiceNamespaceKey.String(c.ServiceNamespace),
 		semconv.ServiceVersionKey.String(c.ServiceVersion))
 }
 
