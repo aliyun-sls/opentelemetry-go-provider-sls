@@ -18,6 +18,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric/global"
 	"math/rand"
 	"time"
 
@@ -25,7 +27,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -51,13 +52,13 @@ func main() {
 
 func mockMetrics() {
 	// 附加的Label信息
-	labels := []label.KeyValue{
-		label.String("label1", "value1"),
+	labels := []attribute.KeyValue{
+		attribute.String("label1", "value1"),
 	}
 
-	meter := otel.Meter("ex.com/basic")
+	meter := global.Meter("ex.com/basic")
 	// 观测值，用于定期获取某个计量值，回调函数每个上报周期会被调用一次
-	_ = metric.Must(meter).NewFloat64ValueObserver(
+	_ = metric.Must(meter).NewFloat64CounterObserver(
 		"randval",
 		func(_ context.Context, result metric.Float64ObserverResult) {
 			result.Observe(
@@ -68,13 +69,13 @@ func mockMetrics() {
 		metric.WithDescription("A random value"),
 	)
 
-	temperature := metric.Must(meter).NewFloat64ValueRecorder("temperature")
+	temperature := metric.Must(meter).NewFloat64Counter("temperature")
 	interrupts := metric.Must(meter).NewInt64Counter("interrupts")
 
 	ctx := context.Background()
 
 	for {
-		temperature.Record(ctx, 100+10*rand.NormFloat64(), labels...)
+		temperature.Add(ctx, 100+10*rand.NormFloat64(), labels...)
 		interrupts.Add(ctx, int64(rand.Intn(100)), labels...)
 
 		time.Sleep(time.Second * time.Duration(rand.Intn(10)))
@@ -115,9 +116,9 @@ func getSpan(ctx context.Context) {
 // 向Span中添加属性值
 func addAttribute(ctx context.Context) {
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(label.KeyValue{
+	span.SetAttributes(attribute.KeyValue{
 		Key:   "label-key-1",
-		Value: label.StringValue("label-value-1")})
+		Value: attribute.StringValue("label-value-1")})
 }
 
 // example of adding an event to a span
@@ -125,8 +126,8 @@ func addAttribute(ctx context.Context) {
 func addEvent(ctx context.Context) {
 	span := trace.SpanFromContext(ctx)
 	span.AddEvent("event1", trace.WithAttributes(
-		label.String("event-attr1", "event-string1"),
-		label.Int64("event-attr2", 10)))
+		attribute.String("event-attr1", "event-string1"),
+		attribute.Int64("event-attr2", 10)))
 }
 
 // example of recording an exception

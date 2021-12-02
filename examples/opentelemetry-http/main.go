@@ -16,6 +16,8 @@ package main
 
 import (
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric/global"
 	"io"
 	"net/http"
 	"time"
@@ -23,8 +25,6 @@ import (
 	"github.com/aliyun-sls/opentelemetry-go-provider-sls/provider"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -46,10 +46,10 @@ func main() {
 	defer provider.Shutdown(slsConfig)
 
 	// 注册一个Metric指标（非必要步骤）
-	labels := []label.KeyValue{
-		label.String("label1", "value1"),
+	labels := []attribute.KeyValue{
+		attribute.String("label1", "value1"),
 	}
-	meter := otel.Meter("aliyun.sls")
+	meter := global.Meter("aliyun.sls")
 	sayDavidCount := metric.Must(meter).NewInt64Counter("say_david_count")
 
 	helloHandler := func(w http.ResponseWriter, req *http.Request) {
@@ -59,9 +59,9 @@ func main() {
 			// 如果需要记录一些事件，可以获取Context中的span并添加Event（非必要步骤）
 			ctx := req.Context()
 			span := trace.SpanFromContext(ctx)
-			span.AddEvent("say : Hello, I am david", trace.WithAttributes(label.KeyValue{
+			span.AddEvent("say : Hello, I am david", trace.WithAttributes(attribute.KeyValue{
 				Key:   "label-key-1",
-				Value: label.StringValue("label-value-1"),
+				Value: attribute.StringValue("label-value-1"),
 			}))
 
 			_, _ = io.WriteString(w, "Hello, I am david!\n")
