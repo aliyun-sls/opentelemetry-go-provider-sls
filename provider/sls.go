@@ -306,7 +306,7 @@ func (c *Config) initMetric(metricsExporter metric.Exporter, stop func()) error 
 			metricsExporter,
 		),
 		controller.WithExporter(metricsExporter),
-		controller.WithCollectPeriod(period*time.Second),
+		controller.WithCollectPeriod(period),
 		controller.WithResource(c.Resource),
 	)
 	global.SetMeterProvider(cont)
