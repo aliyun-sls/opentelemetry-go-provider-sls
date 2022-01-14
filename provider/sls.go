@@ -334,8 +334,6 @@ func (c *Config) initTracer(traceExporter trace.SpanExporter, stop func()) error
 	if traceExporter == nil {
 		return nil
 	}
-	// 使用Batch processor批量上传Trace
-	batchProcessor := trace.NewBatchSpanProcessor(traceExporter)
 	// 建议使用AlwaysSample全量上传Trace数据，若您的数据太多，可以使用sdktrace.ProbabilitySampler进行采样上传
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
@@ -343,7 +341,6 @@ func (c *Config) initTracer(traceExporter trace.SpanExporter, stop func()) error
 			traceExporter,
 			sdktrace.WithMaxExportBatchSize(10),
 		),
-		sdktrace.WithSpanProcessor(batchProcessor),
 		sdktrace.WithResource(c.Resource),
 	)
 	otel.SetTracerProvider(tp)
