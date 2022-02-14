@@ -3,7 +3,7 @@ module github.com/aliyun-sls/opentelemetry-go-provider-mux
 go 1.17
 
 require (
-	github.com/aliyun-sls/opentelemetry-go-provider-sls v0.3.2
+	github.com/aliyun-sls/opentelemetry-go-provider-sls v0.4.0
 	github.com/gorilla/mux v1.8.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux v0.28.0
 	go.opentelemetry.io/otel v1.4.0
