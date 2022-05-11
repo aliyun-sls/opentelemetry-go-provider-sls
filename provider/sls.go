@@ -154,6 +154,14 @@ func WithSLSConfig(project, instanceID, accessKeyID, accessKeySecret string) Opt
 	}
 }
 
+func WithIDGenerator(generator sdktrace.IDGenerator) Option {
+	return func(config *Config) {
+		if generator != nil {
+			config.IDGenerator = generator
+		}
+	}
+}
+
 // Config configure for sls otel
 type Config struct {
 	TraceExporterEndpoint          string `env:"SLS_OTEL_TRACE_ENDPOINT,default=stdout"`
@@ -169,6 +177,7 @@ type Config struct {
 	AccessKeyID                    string `env:"SLS_OTEL_ACCESS_KEY_ID"`
 	AccessKeySecret                string `env:"SLS_OTEL_ACCESS_KEY_SECRET"`
 	AttributesEnvKeys              string `env:"SLS_OTEL_ATTRIBUTES_ENV_KEYS"`
+	IDGenerator                    sdktrace.IDGenerator
 
 	Resource *resource.Resource
 
@@ -330,7 +339,7 @@ func (c *Config) initMetric(metricsExporter metric.Exporter, stop func()) error 
 }
 
 // 初始化Traces，默认全量上传
-func (c *Config) initTracer(traceExporter trace.SpanExporter, stop func()) error {
+func (c *Config) initTracer(traceExporter trace.SpanExporter, stop func(), config *Config) error {
 	if traceExporter == nil {
 		return nil
 	}
@@ -341,6 +350,7 @@ func (c *Config) initTracer(traceExporter trace.SpanExporter, stop func()) error
 			traceExporter,
 			sdktrace.WithMaxExportBatchSize(10),
 		),
+		sdktrace.WithIDGenerator(config.IDGenerator),
 		sdktrace.WithResource(c.Resource),
 	)
 	otel.SetTracerProvider(tp)
@@ -413,7 +423,7 @@ func Start(c *Config) error {
 	if err != nil {
 		return err
 	}
-	err = c.initTracer(traceExporter, traceExpStop)
+	err = c.initTracer(traceExporter, traceExpStop, c)
 	if err != nil {
 		return err
 	}
