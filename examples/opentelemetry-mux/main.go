@@ -25,7 +25,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -50,7 +49,7 @@ func main() {
 		attribute.String("label1", "value1"),
 	}
 	meter := global.Meter("aliyun.sls")
-	callUsersCount := metric.Must(meter).NewInt64Counter("call_users_count")
+	callUsersCount, _ := meter.SyncInt64().Counter("call_users_count")
 
 	r := mux.NewRouter()
 	r.Use(otelmux.Middleware("my-server"))
