@@ -345,10 +345,8 @@ func (c *Config) initTracer(traceExporter trace.SpanExporter, stop func(), confi
 	}
 	// 建议使用AlwaysSample全量上传Trace数据，若您的数据太多，可以使用sdktrace.ProbabilitySampler进行采样上传
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 		sdktrace.WithBatcher(
 			traceExporter,
-			sdktrace.WithMaxExportBatchSize(10),
 		),
 		sdktrace.WithIDGenerator(config.IDGenerator),
 		sdktrace.WithResource(c.Resource),
