@@ -16,15 +16,13 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/metric/global"
-	"go.opentelemetry.io/otel/sdk/export/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"os"
 	"strings"
@@ -34,12 +32,11 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/host"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	otlpTraceGrpc "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
-	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
-	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
-	"go.opentelemetry.io/otel/sdk/metric/selector/simple"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -257,7 +254,8 @@ func (c *Config) initOtelExporter(otlpEndpoint string, insecure bool) (trace.Spa
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		metricsExporter, err = stdoutmetric.New(stdoutmetric.WithPrettyPrint())
+		enc := json.NewEncoder(os.Stdout)
+		metricsExporter, err = stdoutmetric.New(stdoutmetric.WithEncoder(enc))
 	} else if otlpEndpoint != "" {
 		headers := map[string]string{}
 		if c.Project != "" && c.InstanceID != "" {
@@ -287,12 +285,9 @@ func (c *Config) initOtelExporter(otlpEndpoint string, insecure bool) (trace.Spa
 		if insecure {
 			metricSecureOption = otlpmetricgrpc.WithInsecure()
 		}
-		metricsExporter, err = otlpmetric.New(context.Background(),
-			otlpmetricgrpc.NewClient(otlpmetricgrpc.WithEndpoint(otlpEndpoint),
-				metricSecureOption,
-				otlpmetricgrpc.WithHeaders(headers),
-				otlpmetricgrpc.WithCompressor(gzip.Name)))
 
+		metricsExporter, err = otlpmetricgrpc.New(context.Background(), otlpmetricgrpc.WithEndpoint(otlpEndpoint),
+			metricSecureOption, otlpmetricgrpc.WithHeaders(headers), otlpmetricgrpc.WithCompressor(gzip.Name))
 	}
 
 	return traceExporter, metricsExporter, exporterStop, nil
@@ -309,30 +304,21 @@ func (c *Config) initMetric(metricsExporter metric.Exporter, stop func()) error 
 		period = time.Second * 30
 	}
 
-	cont := controller.New(
-		processor.NewFactory(
-			simple.NewWithHistogramDistribution(),
-			metricsExporter,
-		),
-		controller.WithExporter(metricsExporter),
-		controller.WithCollectPeriod(period),
-		controller.WithResource(c.Resource),
-	)
-	global.SetMeterProvider(cont)
-	if err := cont.Start(context.Background()); err != nil {
-		return err
-	}
+	reader := metric.NewPeriodicReader(metricsExporter, metric.WithInterval(period))
+
+	meterProvider := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		metric.WithResource(c.Resource))
+	global.SetMeterProvider(meterProvider)
 
 	// 默认集成主机基础指标
-	if err := host.Start(host.WithMeterProvider(cont)); err != nil {
+	if err := host.Start(host.WithMeterProvider(meterProvider)); err != nil {
 		return err
 	}
-
 	// 默认集成Golang runtime指标
-	err = runtime.Start(runtime.WithMeterProvider(cont), runtime.WithMinimumReadMemStatsInterval(time.Second))
-
+	err = runtime.Start(runtime.WithMeterProvider(meterProvider), runtime.WithMinimumReadMemStatsInterval(time.Second))
 	c.stop = append(c.stop, func() {
-		cont.Stop(context.Background())
+		meterProvider.Shutdown(context.Background())
 		stop()
 	})
 	return err
