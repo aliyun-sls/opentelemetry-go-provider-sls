@@ -49,7 +49,7 @@ func main() {
 		attribute.String("label1", "value1"),
 	}
 	meter := global.Meter("aliyun.sls")
-	callUsersCount, _ := meter.SyncInt64().Counter("call_users_count")
+	callUsersCount, _ := meter.Int64Counter("call_users_count")
 
 	r := mux.NewRouter()
 	r.Use(otelmux.Middleware("my-server"))

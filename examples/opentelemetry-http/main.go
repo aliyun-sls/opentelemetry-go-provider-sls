@@ -49,7 +49,7 @@ func main() {
 		attribute.String("label1", "value1"),
 	}
 	meter := global.Meter("aliyun.sls")
-	sayDavidCount, _ := meter.SyncInt64().Counter("say_david_count")
+	sayDavidCount, _ := meter.Int64Counter("say_david_count")
 
 	helloHandler := func(w http.ResponseWriter, req *http.Request) {
 		if time.Now().Unix()%10 == 0 {

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/global"
-	"go.opentelemetry.io/otel/metric/instrument/asyncfloat64"
+	"go.opentelemetry.io/otel/metric/instrument"
 	"math/rand"
 	"time"
 
@@ -58,13 +58,14 @@ func mockMetrics() {
 
 	meter := global.Meter("ex.com/basic")
 
-	c, _ := meter.AsyncFloat64().Counter("randval")
+	meter.Float64ObservableCounter("randval", instrument.WithFloat64Callback(func(ctx context.Context,
+		observer instrument.Float64Observer) error {
+		observer.Observe(rand.Float64(), labels...)
+		return nil
+	}))
 
-	// 观测值，用于定期获取某个计量值，回调函数每个上报周期会被调用一次
-	go mockObserveMetric(c, labels)
-
-	temperature, _ := meter.SyncFloat64().Counter("temperature")
-	interrupts, _ := meter.SyncInt64().Counter("interrupts")
+	temperature, _ := meter.Float64Counter("temperature")
+	interrupts, _ := meter.Int64Counter("interrupts")
 
 	ctx := context.Background()
 
@@ -74,15 +75,6 @@ func mockMetrics() {
 
 		time.Sleep(time.Second * time.Duration(rand.Intn(10)))
 	}
-}
-
-func mockObserveMetric(c asyncfloat64.Counter, labels []attribute.KeyValue) {
-	timer := time.NewTimer(1 * time.Second)
-	select {
-	case <-timer.C:
-		c.Observe(context.Background(), rand.Float64(), labels...)
-	}
-	timer.Stop()
 }
 
 func mockTrace() {
