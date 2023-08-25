@@ -19,8 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric/global"
-	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric"
 	"math/rand"
 	"time"
 
@@ -56,11 +55,11 @@ func mockMetrics() {
 		attribute.String("label1", "value1"),
 	}
 
-	meter := global.Meter("ex.com/basic")
+	meter := otel.Meter("ex.com/basic")
 
-	meter.Float64ObservableCounter("randval", instrument.WithFloat64Callback(func(ctx context.Context,
-		observer instrument.Float64Observer) error {
-		observer.Observe(rand.Float64(), labels...)
+	meter.Float64ObservableCounter("randval", metric.WithFloat64Callback(func(ctx context.Context,
+		observer metric.Float64Observer) error {
+		observer.Observe(rand.Float64(), metric.WithAttributes(labels...))
 		return nil
 	}))
 
@@ -70,8 +69,8 @@ func mockMetrics() {
 	ctx := context.Background()
 
 	for {
-		temperature.Add(ctx, 100+10*rand.NormFloat64(), labels...)
-		interrupts.Add(ctx, int64(rand.Intn(100)), labels...)
+		temperature.Add(ctx, 100+10*rand.NormFloat64(), metric.WithAttributes(labels...))
+		interrupts.Add(ctx, int64(rand.Intn(100)), metric.WithAttributes(labels...))
 
 		time.Sleep(time.Second * time.Duration(rand.Intn(10)))
 	}

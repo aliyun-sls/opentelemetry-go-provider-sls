@@ -16,8 +16,9 @@ package main
 
 import (
 	"fmt"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/metric"
 	"io"
 	"net/http"
 	"time"
@@ -48,7 +49,7 @@ func main() {
 	labels := []attribute.KeyValue{
 		attribute.String("label1", "value1"),
 	}
-	meter := global.Meter("aliyun.sls")
+	meter := otel.Meter("aliyun.sls")
 	sayDavidCount, _ := meter.Int64Counter("say_david_count")
 
 	helloHandler := func(w http.ResponseWriter, req *http.Request) {
@@ -64,7 +65,7 @@ func main() {
 			}))
 
 			_, _ = io.WriteString(w, "Hello, I am david!\n")
-			sayDavidCount.Add(req.Context(), 1, labels...)
+			sayDavidCount.Add(req.Context(), 1, metric.WithAttributes(labels...))
 		}
 	}
 

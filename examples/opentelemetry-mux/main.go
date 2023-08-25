@@ -17,8 +17,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/metric"
 	"net/http"
 
 	"github.com/aliyun-sls/opentelemetry-go-provider-sls/provider"
@@ -48,7 +49,7 @@ func main() {
 	labels := []attribute.KeyValue{
 		attribute.String("label1", "value1"),
 	}
-	meter := global.Meter("aliyun.sls")
+	meter := otel.Meter("aliyun.sls")
 	callUsersCount, _ := meter.Int64Counter("call_users_count")
 
 	r := mux.NewRouter()
@@ -56,7 +57,7 @@ func main() {
 	r.HandleFunc("/users/{id:[0-9]+}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		id := vars["id"]
-		callUsersCount.Add(r.Context(), 1, labels...)
+		callUsersCount.Add(r.Context(), 1, metric.WithAttributes(labels...))
 		name := getUser(r.Context(), id)
 		reply := fmt.Sprintf("user %s (id %s)\n", name, id)
 		_, _ = w.Write(([]byte)(reply))
