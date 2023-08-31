@@ -19,10 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
-	"time"
-
 	"github.com/sethvargo/go-envconfig"
 	"go.opentelemetry.io/contrib/instrumentation/host"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -30,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	otlpTraceGrpc "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
@@ -41,6 +37,9 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/encoding/gzip"
+	"os"
+	"strings"
+	"time"
 )
 
 const (
@@ -236,23 +235,55 @@ func mergeResource(c *Config) error {
 }
 
 // 初始化Exporter，如果otlpEndpoint传入的值为 stdout，则默认把信息打印到标准输出用于调试
-func (c *Config) initOtelExporter(otlpEndpoint string, insecure bool) (trace.SpanExporter, metric.Exporter, func(), error) {
-	var traceExporter trace.SpanExporter
-	var metricsExporter metric.Exporter
-	var err error
-
-	var exporterStop = func() {
+func (c *Config) initOtelTraceExporter(otlpEndpoint string, insecure bool) (traceExporter trace.SpanExporter, traceExporterStop func(), err error) {
+	traceExporterStop = func() {
 		if traceExporter != nil {
-			traceExporter.Shutdown(context.Background())
+			_ = traceExporter.Shutdown(context.Background())
 		}
 	}
 
 	if otlpEndpoint == "stdout" {
 		// 使用Pretty的打印方式
 		traceExporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
-		if err != nil {
-			return nil, nil, nil, err
+	} else if otlpEndpoint != "" {
+		headers := map[string]string{}
+		if c.Project != "" && c.InstanceID != "" {
+			headers = map[string]string{
+				slsProjectHeader:         c.Project,
+				slsInstanceIDHeader:      c.InstanceID,
+				slsAccessKeyIDHeader:     c.AccessKeyID,
+				slsAccessKeySecretHeader: c.AccessKeySecret,
+			}
 		}
+
+		// 使用GRPC方式导出数据
+		traceSecureOption := otlptracegrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
+		if insecure {
+			traceSecureOption = otlptracegrpc.WithInsecure()
+		}
+		traceExporter, err = otlptrace.New(
+			context.Background(),
+			otlptracegrpc.NewClient(otlptracegrpc.WithEndpoint(otlpEndpoint),
+				traceSecureOption,
+				otlptracegrpc.WithHeaders(headers),
+				otlptracegrpc.WithCompressor(gzip.Name),
+			),
+		)
+	}
+
+	return
+}
+
+// 初始化Exporter，如果otlpEndpoint传入的值为 stdout，则默认把信息打印到标准输出用于调试
+func (c *Config) initOtelMetricsExporter(otlpEndpoint string, insecure bool) (metricsExporter metric.Exporter, metricsExporterStop func(), err error) {
+	metricsExporterStop = func() {
+		if metricsExporter != nil {
+			_ = metricsExporter.Shutdown(context.Background())
+		}
+	}
+
+	if otlpEndpoint == "stdout" {
+		// 使用Pretty的打印方式
 		enc := json.NewEncoder(os.Stdout)
 		metricsExporter, err = stdoutmetric.New(stdoutmetric.WithEncoder(enc))
 	} else if otlpEndpoint != "" {
@@ -267,29 +298,19 @@ func (c *Config) initOtelExporter(otlpEndpoint string, insecure bool) (trace.Spa
 		}
 
 		// 使用GRPC方式导出数据
-		traceSecureOption := otlpTraceGrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
-		if insecure {
-			traceSecureOption = otlpTraceGrpc.WithInsecure()
-		}
-		traceExporter, err = otlptrace.New(context.Background(),
-			otlpTraceGrpc.NewClient(otlpTraceGrpc.WithEndpoint(otlpEndpoint),
-				traceSecureOption,
-				otlpTraceGrpc.WithHeaders(headers),
-				otlpTraceGrpc.WithCompressor(gzip.Name)))
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
 		metricSecureOption := otlpmetricgrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
 		if insecure {
 			metricSecureOption = otlpmetricgrpc.WithInsecure()
 		}
-
-		metricsExporter, err = otlpmetricgrpc.New(context.Background(), otlpmetricgrpc.WithEndpoint(otlpEndpoint),
-			metricSecureOption, otlpmetricgrpc.WithHeaders(headers), otlpmetricgrpc.WithCompressor(gzip.Name))
+		metricsExporter, err = otlpmetricgrpc.New(
+			context.Background(),
+			otlpmetricgrpc.WithEndpoint(otlpEndpoint),
+			metricSecureOption, otlpmetricgrpc.WithHeaders(headers),
+			otlpmetricgrpc.WithCompressor(gzip.Name),
+		)
 	}
 
-	return traceExporter, metricsExporter, exporterStop, nil
+	return
 }
 
 // 初始化Metrics，默认30秒导出一次Metrics
@@ -398,11 +419,11 @@ func Start(c *Config) error {
 	if c.errorHandler != nil {
 		otel.SetErrorHandler(c.errorHandler)
 	}
-	traceExporter, _, traceExpStop, err := c.initOtelExporter(c.TraceExporterEndpoint, c.TraceExporterEndpointInsecure)
+	traceExporter, traceExpStop, err := c.initOtelTraceExporter(c.TraceExporterEndpoint, c.TraceExporterEndpointInsecure)
 	if err != nil {
 		return err
 	}
-	_, metricExporter, metricExpStop, err := c.initOtelExporter(c.MetricExporterEndpoint, c.MetricExporterEndpointInsecure)
+	metricExporter, metricExpStop, err := c.initOtelMetricsExporter(c.MetricExporterEndpoint, c.MetricExporterEndpointInsecure)
 	if err != nil {
 		return err
 	}
