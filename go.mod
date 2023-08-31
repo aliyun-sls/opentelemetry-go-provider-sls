@@ -3,7 +3,6 @@ module github.com/aliyun-sls/opentelemetry-go-provider-sls
 go 1.15
 
 require (
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20230110061619-bbe2e5e100de // indirect
 	github.com/power-devops/perfstat v0.0.0-20221212215047-62379fc7944b // indirect
 	github.com/sethvargo/go-envconfig v0.9.0
